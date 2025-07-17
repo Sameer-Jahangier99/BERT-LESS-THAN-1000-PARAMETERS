@@ -107,7 +107,7 @@ function LightweightAttention(d_model::Int, dropout_rate::Float32=0.1f0)
     proj_dim = max(1, d_model ÷ 2)
     
     return LightweightAttention(
-        Dense(d_model, proj_dim, bias=false),  # No bias to save parameters
+        Dense(d_model, proj_dim, bias=false), 
         Dense(d_model, proj_dim, bias=false),
         Dense(d_model, proj_dim, bias=false),
         Dense(proj_dim, d_model, bias=false),
@@ -578,6 +578,25 @@ function main(use_kfold::Bool=true, k_folds::Int=10)
         k_fold_validation(
             X_shuffled, y_shuffled, length(vocab), max_seq_len, k_folds, 20
         )
+        
+        # Train final model on full dataset after k-fold validation
+        println("\n6. Training final model on full dataset...")
+        batch_size = 32
+        X_full_t = transpose(X_shuffled)
+        full_loader = Flux.DataLoader((X_full_t, y_shuffled), batchsize=batch_size, shuffle=true)
+        
+        final_model = BERTLike(length(vocab), 8, max_seq_len, 2)
+        param_count = count_parameters(final_model)
+        println("Final model created with $param_count parameters.")
+        
+        # Train on full dataset
+        trained_final_model, _, _, _, _ = train_model(
+            final_model, full_loader, full_loader, 20  # Using same data for train/val since we already did k-fold
+        )
+        
+        println("\n7. Saving trained model...")
+        BSON.@save "trained_model.bson" trained_final_model vocab max_seq_len
+        println("Model saved as 'trained_model.bson'.")
     else
         println("\n5. Splitting data (4:3:3 ratio)...")
         n_samples = size(X, 1)
@@ -627,7 +646,7 @@ end
 if abspath(PROGRAM_FILE) == @__FILE__
     # To run with standard train/test split: main(false)
     # To run with k-fold cross validation: main(true, 10)
-    main(true, 10)
+    main(true, 10)  # Now k-fold also saves the model
     
     println("\n--- Execution Complete ---")
 end
